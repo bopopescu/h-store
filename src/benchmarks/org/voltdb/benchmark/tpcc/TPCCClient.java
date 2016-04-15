@@ -27,13 +27,18 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.Vector;
 
 import org.apache.log4j.Logger;
+import org.json.simple.JSONArray;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
 import org.voltdb.VoltType;
@@ -42,6 +47,7 @@ import org.voltdb.benchmark.Clock;
 import org.voltdb.benchmark.Verification;
 import org.voltdb.benchmark.Verification.Expression;
 import org.voltdb.benchmark.tpcc.procedures.ResetWarehouse;
+import org.voltdb.benchmark.tpcc.procedures.RestoreSnapshot;
 import org.voltdb.benchmark.tpcc.procedures.SaveSnapshot;
 import org.voltdb.benchmark.tpcc.procedures.delivery;
 import org.voltdb.benchmark.tpcc.procedures.neworder;
@@ -66,6 +72,8 @@ import edu.brown.utils.StringUtil;
 public class TPCCClient extends BenchmarkComponent implements TPCCSimulation.ProcCaller {
     private static final Logger LOG = Logger.getLogger(TPCCClient.class);
     
+    private static int n = 0;
+    
     final TPCCSimulation m_tpccSim;
     final ScaleParameters m_scaleParams;
     final TPCCConfig m_tpccConfig;
@@ -82,7 +90,8 @@ public class TPCCClient extends BenchmarkComponent implements TPCCSimulation.Pro
         PAYMENT(TPCCConstants.FREQUENCY_PAYMENT, paymentByCustomerId.class, paymentByCustomerName.class),
         NEW_ORDER(TPCCConstants.FREQUENCY_NEW_ORDER, neworder.class),
         RESET_WAREHOUSE(0, ResetWarehouse.class),
-        SNAPSHOT_SAVE(TPCCConstants.FREQUENCY_SNAPSHOT_SAVE, SaveSnapshot.class);
+        SNAPSHOT_SAVE(TPCCConstants.FREQUENCY_SNAPSHOT_SAVE, SaveSnapshot.class),
+        SNAPSHOT_RESTORE(TPCCConstants.FREQUENCY_SNAPSHOT_RESTORE, RestoreSnapshot.class);
     
         private Transaction(int weight, Class<? extends VoltProcedure>...procClasses) {
             this.displayName = StringUtil.title(this.name().replace("_", " ").toLowerCase());
@@ -322,7 +331,7 @@ public class TPCCClient extends BenchmarkComponent implements TPCCSimulation.Pro
             if (weight == null) weight = t.weight;
             if (weight > 0) txns.put(t, weight);
         } // FOR
-        assert(txns.getSampleCount() == 101) : txns;
+        assert(txns.getSampleCount() == 102) : txns;
         this.txnWeights = new FlatHistogram<Transaction>(m_tpccSim.rng(), txns);
         if (LOG.isDebugEnabled()) LOG.debug("Transaction Weights:\n" + txns);
     }
@@ -985,64 +994,150 @@ public class TPCCClient extends BenchmarkComponent implements TPCCSimulation.Pro
     
    @Override
     public void callSaveSnapshot(long _timestamp) throws IOException {
-        //final SaveSnapshotCallback cb = new SaveSnapshotCallback();
-        
-        /*Client client = this.getClientHandle();
-        if (client instanceof BlockingClient) {
-            client = ((BlockingClient)client).getClient();
-        }*/
-        
-        /*if (m_blockOnBackpressure) {
-            while (!client.callProcedure(cb, TPCCConstants.SNAPSHOT_SAVE,client,timestamp)) {
-                try {
-                    this.getClientHandle().backpressureBarrier();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        } else {
-            m_queuedMessage =client.callProcedure(cb, TPCCConstants.SNAPSHOT_SAVE,client,timestamp);
-        }*/
     	String destination = "/home/aayush/workspace/H-Store/h-store/resources/snapshots/";
 		final int block = 1;
 		long timestampMin = Long.MAX_VALUE;
 		int dirNo=1;
 		String content="";
 		/*for(int i=1;i<=3;i++){
-			if(new File(destination+Integer.toString(i)+"/",destination+Integer.toString(i)+"/timestamp.txt").exists()){
-				try {
-					content = new Scanner(new File(destination+Integer.toString(i)+"/timestamp.txt")).useDelimiter("\\Z").next();
-				} catch (FileNotFoundException e) {
-					e.printStackTrace();
-				}
-				if(timestampMin > Long.valueOf(content)){
-					timestampMin = Long.valueOf(content);
-					dirNo = i;
-				}
+			try{
+				content = new Scanner(new File(destination+Integer.toString(i)+"/timestamp.txt")).useDelimiter("\\Z").next();
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
 			}
-			else{
+			if(timestampMin > Long.valueOf(content)){
+				timestampMin = Long.valueOf(content);
 				dirNo = i;
-				break;
 			}
 		}*/
 		dirNo = 1;
 		destination = destination+Integer.toString(dirNo)+"/";
-		/*File dir = new File(destination);
-		for(File file: dir.listFiles()) file.delete();*/
 		String timestamp = Long.toString(_timestamp);
 		String u_id = "tpcc";
 		try{
-			/*FileOutputStream fout = new FileOutputStream(destination+"timestamp.txt");
+			FileOutputStream fout = new FileOutputStream(destination+"timestamp.txt");
 			fout.write(timestamp.getBytes());
-			fout.close();*/
-//			ClientResponse clientResponse = this.getClientHandle().callProcedure("@SnapshotSave",destination,u_id,block);
-			ClientResponse clientResponse = this.getClientHandle().callProcedure("@SnapshotRestore",destination,u_id,1);
-//			ClientResponse clientResponse =  client.callProcedure("@SnapshotSave",destination,u_id,1);
+			fout.close();
+			ClientResponse clientResponse = this.getClientHandle().callProcedure("@SnapshotSave",destination,u_id,block);
 			incrementTransactionCounter(clientResponse, TPCCClient.Transaction.SNAPSHOT_SAVE.ordinal());
 		}catch(Exception e){
 			e.printStackTrace();
 		}
     }
+   
+   
+   class RestoreSnapshotCallback implements ProcedureCallback {
+
+       @Override
+       public void clientCallback(ClientResponse clientResponse) {
+           if (LOG.isDebugEnabled()) LOG.debug("RestoreSnapshot clientResponse.getStatus() = " + clientResponse.getStatus());
+           if (crash_on_error) {
+               boolean status = checkTransaction(TPCCConstants.SNAPSHOT_RESTORE, clientResponse, false, false);
+           }
+           incrementTransactionCounter(clientResponse, TPCCClient.Transaction.SNAPSHOT_RESTORE.ordinal());
+       }
+
+   }
+   
+  @Override
+   public void callRestoreSnapshot(long _timestamp) throws IOException {
+   	String destination = "/home/aayush/workspace/H-Store/h-store/resources/snapshots/";
+		final int block = 1;
+		long timestampMin = Long.MAX_VALUE;
+		int dirNo=1;
+		String content="";
+		//dirNo = 2;
+		destination = destination+Integer.toString(dirNo)+"/";
+		String timestamp = Long.toString(_timestamp);
+		String u_id = "tpcc";
+		
+		File f = new File(destination);
+		if(f.list().length <= 1){
+			/*ClientResponse clientResponse = null;
+			incrementTransactionCounter(clientResponse, TPCCClient.Transaction.SNAPSHOT_RESTORE.ordinal());*/
+			return;
+		}
+		
+		try{
+			if(n>0)
+				return;
+			else
+				n=1;
+			ClientResponse clientResponse = this.getClientHandle().callProcedure("@SnapshotRestore",destination,u_id,1);
+			incrementTransactionCounter(clientResponse, TPCCClient.Transaction.SNAPSHOT_RESTORE.ordinal());
+			RemoveTransaction rt = new RemoveTransaction();
+			Vector<TransactionInfo> trInfo = rt.parseTraceLog();
+			reRunTransactions(trInfo);
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+   }
+  
+  private void reRunTransactions(Vector<TransactionInfo> transaction){
+	  
+	  Iterator<TransactionInfo> itr = transaction.iterator();
+	  while(itr.hasNext()){
+		TransactionInfo tr = itr.next();
+		try{
+			TimestampType timestamp;
+			switch(tr.name){
+				case "ostatByCustomerId":
+					callOrderStatus(TPCCConstants.ORDER_STATUS_BY_ID,tr.params.get(0),tr.params.get(1),tr.params.get(2));
+					break;
+				case "neworder":
+					Object[] arr1 = ((JSONArray)tr.params.get(4)).toArray();
+					Object[] arr2 = ((JSONArray)tr.params.get(5)).toArray();
+					Object[] arr3 = ((JSONArray)tr.params.get(6)).toArray();
+					/*int arrSize = ((JSONArray)tr.params.get(4)).size();
+					Long[] arr1 = new Long[arrSize];
+					for(int i=0;i<arrSize;i++)
+						arr1[i] =  Long.parseLong(((JSONArray)tr.params.get(4)).get(i).toString());
+					arrSize = ((JSONArray)tr.params.get(5)).size();
+					Long[] arr2 = new Long[arrSize];
+					for(int i=0;i<arrSize;i++)
+						arr2[i] =  Long.parseLong(((JSONArray)tr.params.get(5)).get(i).toString());
+					arrSize = ((JSONArray)tr.params.get(4)).size();
+					Long[] arr3 = new Long[arrSize];
+					for(int i=0;i<arrSize;i++)
+						arr3[i] = Long.parseLong(((JSONArray)tr.params.get(6)).get(i).toString());*/
+					
+					timestamp = new TimestampType(new SimpleDateFormat(TimestampType.STRING_FORMAT).parse(tr.params.get(3).toString()));
+					callNewOrder(false,false,Short.parseShort(tr.params.get(0).toString()),Byte.parseByte(tr.params.get(1).toString()),
+							Integer.parseInt(tr.params.get(2).toString()),timestamp,arr1,arr2,arr3);
+					break;
+				case "delivery": 
+					timestamp = new TimestampType(new SimpleDateFormat(TimestampType.STRING_FORMAT).parse(tr.params.get(2).toString()));
+					callDelivery(Short.parseShort(tr.params.get(0).toString()),Integer.parseInt(tr.params.get(1).toString()),timestamp);
+					break;
+				case "paymentByCustomerId": 
+					timestamp = new TimestampType(new SimpleDateFormat(TimestampType.STRING_FORMAT).parse(tr.params.get(6).toString()));
+					callPaymentById(Short.parseShort(tr.params.get(0).toString()),Byte.parseByte(tr.params.get(1).toString()),
+							Double.parseDouble(tr.params.get(2).toString()),Short.parseShort(tr.params.get(3).toString()),
+							Byte.parseByte(tr.params.get(4).toString()),Integer.parseInt(tr.params.get(5).toString()),timestamp);
+					break;
+				case "slev": 
+					callStockLevel(Short.parseShort(tr.params.get(0).toString()),Byte.parseByte(tr.params.get(0).toString()),
+							Integer.parseInt(tr.params.get(2).toString()));
+					break;
+				case "paymentByCustomerName":
+					timestamp = new TimestampType(new SimpleDateFormat(TimestampType.STRING_FORMAT).parse(tr.params.get(6).toString()));
+					callPaymentByName(Short.parseShort(tr.params.get(0).toString()),Byte.parseByte(tr.params.get(1).toString()),
+							Double.parseDouble(tr.params.get(2).toString()),Short.parseShort(tr.params.get(3).toString()),
+							Byte.parseByte(tr.params.get(4).toString()),tr.params.get(5).toString(),timestamp);
+					break;
+				case "ostatByCustomerName": 
+					callOrderStatus(TPCCConstants.ORDER_STATUS_BY_NAME,tr.params.get(0),tr.params.get(1),tr.params.get(2));
+					break;
+				default: break;
+			}
+		}catch(Exception e){
+			e.printStackTrace();
+		}
+	  }  
+  }
+  
+  
+  
     
     @Override
     public String[] getTransactionDisplayNames() {

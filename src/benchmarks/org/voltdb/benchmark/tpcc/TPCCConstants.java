@@ -84,6 +84,7 @@ public final class TPCCConstants {
     public static final int FREQUENCY_PAYMENT = 43;
     public static final int FREQUENCY_NEW_ORDER = 45;
     public static final int FREQUENCY_SNAPSHOT_SAVE = 1;
+    public static final int FREQUENCY_SNAPSHOT_RESTORE = 1;
     
 //    public static final int FREQUENCY_STOCK_LEVEL = 0;
 //    public static final int FREQUENCY_DELIVERY = 0;
@@ -228,6 +229,7 @@ public final class TPCCConstants {
     public static final String STOCK_LEVEL = slev.class.getSimpleName();
     //public static final String STOCK_LEVEL = slevIterative.class.getSimpleName();
     public static final String SNAPSHOT_SAVE = SaveSnapshot.class.getSimpleName();
+    public static final String SNAPSHOT_RESTORE = RestoreSnapshot.class.getSimpleName();
 
     //public static final String MEASUREOVERHEAD = measureOverhead.class.getSimpleName();
     public static final String RESET_WAREHOUSE = ResetWarehouse.class.getSimpleName();

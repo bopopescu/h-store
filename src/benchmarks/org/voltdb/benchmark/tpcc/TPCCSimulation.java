@@ -95,6 +95,7 @@ public class TPCCSimulation {
         throws IOException;
         public void callNewOrder(boolean rollback, boolean noop, Object... paramlist) throws IOException;
         public void callSaveSnapshot(long timestamp) throws IOException;
+        public void callRestoreSnapshot(long timestamp) throws IOException;
     }
 
 
@@ -488,6 +489,11 @@ public class TPCCSimulation {
         TimestampType now = clock.getDateTime();
         client.callSaveSnapshot(now.getTime());
     }
+    
+    public void doRestoreSnapshot()  throws IOException {
+        TimestampType now = clock.getDateTime();
+        client.callRestoreSnapshot(now.getTime());
+    }
 
     /**
      * Selects and executes a transaction at random. The number of new order
@@ -523,6 +529,9 @@ public class TPCCSimulation {
                 break;
             case SNAPSHOT_SAVE:
             	doSaveSnapshot();
+            	break;
+            case SNAPSHOT_RESTORE:
+            	doRestoreSnapshot();
             	break;
             default:
                 assert(false) : "Unexpected transaction " + t;

@@ -73,6 +73,7 @@ public class TPCCProjectBuilder extends AbstractProjectBuilder {
         LoadWarehouseReplicated.class,
         GetTableCounts.class,
         SaveSnapshot.class,
+        RestoreSnapshot.class,
 //        MRquery1.class,
 //        MRquery3.class,
 //        MRquery6.class,
@@ -90,6 +91,7 @@ public class TPCCProjectBuilder extends AbstractProjectBuilder {
         addTransactionFrequency(paymentByCustomerName.class, 17);
         addTransactionFrequency(slev.class, 4);
         addTransactionFrequency(SaveSnapshot.class, 1);
+        addTransactionFrequency(RestoreSnapshot.class, 1);
         
     }
     
